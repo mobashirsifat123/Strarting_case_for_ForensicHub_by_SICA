@@ -1,0 +1,96 @@
+# Candidate training config for SICA reproduction.
+# Values marked with # ASSUMPTION are not specified in the SICA paper.
+
+model:
+  name: CLIP_LORA_PURE
+  init_config:
+    name: ViT-L/14
+    num_classes: 1
+    lora_r: 8
+    lora_alpha: 16.0
+    lora_qkv: qkv
+    lora_apply_out_proj: true
+    tune_mode: lora
+
+# Manifests are loaded from ./data (place the OpenMMSecV2 jsons_v4 files here,
+# or symlink ./data to your dataset root). Paths are relative to the repo.
+# If your manifest stores image paths under a different absolute prefix than
+# where the images live locally, set path_prefix_from/to below to remap them;
+# leave both empty ("") if the manifest paths already resolve locally.
+train_dataset:
+  name: AIGCLabelDataset
+  dataset_name: train
+  init_config:
+    path: ./data/train.json
+    image_size: 224
+    path_prefix_from: ""
+    path_prefix_to: ""
+
+test_dataset:
+  - name: AIGCLabelDataset
+    dataset_name: validation
+    init_config:
+      path: ./data/id_test.json
+      image_size: 224
+      path_prefix_from: ""
+      path_prefix_to: ""
+
+transform:
+  name: AIGCTransform
+  init_config:
+    output_size: [224, 224]
+    norm_type: clip
+# NOTE: train/test augmentation follows AIGCTransform defaults (ASSUMPTION - not specified by SICA paper)
+
+evaluator:
+  - name: ImageAUC
+    init_config: {}
+  - name: ImageAP
+    init_config: {}
+  - name: ImageAccuracy
+    init_config: {}
+
+# Global training arguments
+log_dir: ./outputs/sica_train_1gpu
+output_dir: ./outputs/sica_train_1gpu
+# NOTE: train.py overrides output_dir with log_dir (add_attr(output_dir=log_dir)),
+# so checkpoints are written to log_dir as checkpoint-<epoch>.pth.
+device: cuda
+seed: 42  # ASSUMPTION - not specified by SICA paper
+
+# Batch configuration: 4 GPUs × 24 × 1 accumulation = global batch 96
+# (multi-GPU is the paper's assumed setup; this config is not launched here.)
+batch_size: 24
+test_batch_size: 32  # ASSUMPTION - not specified by SICA paper
+num_workers: 4  # ASSUMPTION - not specified by SICA paper
+pin_mem: true  # ASSUMPTION - not specified by SICA paper
+accum_iter: 4  # 1-GPU paper match: 24 x 4 = 96 global batch (= paper 4-GPU setup)
+
+epochs: 10
+start_epoch: 0
+test_period: 1  # ASSUMPTION - validate every epoch
+record_epoch: 0  # ASSUMPTION - allow saving best checkpoint from epoch 0
+
+# Logging frequency within an epoch
+log_per_epoch_count: 20  # ASSUMPTION - matches ForensicHub AIGC config convention
+
+# Optimizer / scheduler
+lr: 1.0e-4
+min_lr: 1.0e-5
+warmup_epochs: 0  # ASSUMPTION - not specified by SICA paper
+blr: 1.0e-4  # Fallback if lr is None; not used when lr is set
+weight_decay: 0.05  # ASSUMPTION - not specified by SICA paper; matches ForensicHub AIGC configs
+
+# Resume from checkpoint (empty string = train from scratch)
+resume: ""
+# IMDLBenCo compatibility
+if_predict_label: true
+# IMDLBenCo's test_one_epoch (called after each epoch) reads args.no_model_eval.
+# false = apply model.eval() at validation (normal behavior). ForensicHub's
+# split_config only fills args from top-level YAML keys, so set it here.
+no_model_eval: false
+# AMP and DDP
+use_amp: true  # ASSUMPTION - not specified by SICA paper
+find_unused_parameters: false  # ASSUMPTION - not specified by SICA paper
+dist_on_itp: false
+dist_url: env://

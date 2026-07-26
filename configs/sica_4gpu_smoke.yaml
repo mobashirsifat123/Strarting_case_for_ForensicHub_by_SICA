@@ -1,0 +1,92 @@
+# Brief 4-GPU DDP smoke config for the SICA reproduction.
+# Identical to sica_train_sanity.yaml except log_dir/output_dir, so the 4-rank
+# DDP path (NCCL init, DistributedSampler sharding, all-reduce, multi-rank
+# validation, checkpoint) can be verified quickly without launching the full
+# 10-epoch run. Reuses the cached sanity subsets (fast startup) and writes to a
+# separate log dir so the single-GPU sanity artifacts are not disturbed.
+
+model:
+  name: CLIP_LORA_PURE
+  init_config:
+    name: ViT-L/14
+    num_classes: 1
+    lora_r: 8
+    lora_alpha: 16.0
+    lora_qkv: qkv
+    lora_apply_out_proj: true
+    tune_mode: lora
+
+# Sanity manifests live in ./data (place them there or symlink ./data to your
+# dataset root). Enable path_prefix_from/to only if the manifest stores image
+# paths under a different absolute prefix than your local images; leave both
+# empty ("") otherwise. See sica_train_1gpu.yaml for details.
+train_dataset:
+  name: AIGCLabelDataset
+  dataset_name: train
+  init_config:
+    path: ./data/train_sanity.json
+    image_size: 224
+    path_prefix_from: ""
+    path_prefix_to: ""
+    prefilter: true
+    cache_dir: ./cache
+
+test_dataset:
+  - name: AIGCLabelDataset
+    dataset_name: validation
+    init_config:
+      path: ./data/id_test_sanity.json
+      image_size: 224
+      path_prefix_from: ""
+      path_prefix_to: ""
+      prefilter: true
+      cache_dir: ./cache
+
+transform:
+  name: AIGCTransform
+  init_config:
+    output_size: [224, 224]
+    norm_type: clip
+
+evaluator:
+  - name: ImageAUC
+    init_config: {}
+  - name: ImageAP
+    init_config: {}
+  - name: ImageAccuracy
+    init_config: {}
+
+# Outputs stay under reproduction_artifacts/ (per the task constraint).
+log_dir: ./outputs/sica_4gpu_smoke
+output_dir: ./outputs/sica_4gpu_smoke
+device: cuda
+seed: 42
+
+batch_size: 24
+test_batch_size: 32
+num_workers: 4
+pin_mem: true
+accum_iter: 1
+
+epochs: 1
+start_epoch: 0
+test_period: 1
+record_epoch: 0
+
+log_per_epoch_count: 20
+
+lr: 1.0e-4
+min_lr: 1.0e-5
+warmup_epochs: 0
+blr: 1.0e-4
+weight_decay: 0.05
+
+resume: ""
+if_predict_label: true
+# IMDLBenCo compatibility: test_one_epoch (called after each epoch) reads
+# args.no_model_eval; false = apply model.eval() at validation (normal).
+no_model_eval: false
+use_amp: true
+find_unused_parameters: false
+dist_on_itp: false
+dist_url: env://
