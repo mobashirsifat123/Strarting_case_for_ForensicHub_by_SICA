@@ -26,16 +26,18 @@ DESIGN (faithful + eval-correct):
     other users' GPU jobs. Uses one GPU (forward only).
 
 USAGE (PYTHONPATH=ForensicHub, same as train/test):
-PYTHONPATH=../ForensicHub \
-python dump_sica_predictions.py \
-      --checkpoint .../logs/sica_train_1gpu/checkpoint-9.pth \
-p.add_argument(
-    "--manifest",
-    required=True,
-    help="Path to dataset manifest JSON"
-)
-      --out       .../predictions/total_ood_test.csv \
-      --gpu 3
+  PYTHONPATH=/path/to/ForensicHub \
+  python dump_sica_predictions.py \
+        --checkpoint /path/to/logs/sica_train_1gpu/checkpoint-9.pth \
+        --manifest  /path/to/OpenMMSecV2/jsons_v4/total_ood_test.json \
+        --out       /path/to/predictions/total_ood_test.csv \
+        --path-prefix-from /path/to/manifest/prefix/ \
+        --path-prefix-to   /path/to/local/dataset/ \
+        --gpu 0
+
+  --path-prefix-from is the leading prefix stored in the manifest's image paths;
+  --path-prefix-to is the root where your local copy of the dataset lives.
+  Omit both (or pass both empty) if the manifest paths already resolve locally.
 
 OUTPUT CSV columns:
   path, label, probability, logit, pred_class, domain, mani_type, sub_mani_type, ori_dataset
@@ -67,8 +69,12 @@ def parse_args():
     p.add_argument("--batch-size", type=int, default=64)
     p.add_argument("--num-workers", type=int, default=8)
     p.add_argument("--image-size", type=int, default=224)
-    p.add_argument("--path-prefix-from", default="/mnt/public/")
-    p.add_argument("--path-prefix-to", default="/mnt/nas/public/")
+    p.add_argument("--path-prefix-from", default="",
+                   help="Leading prefix stored in the manifest's image paths. "
+                        "Empty = no remapping. Must be set together with --path-prefix-to.")
+    p.add_argument("--path-prefix-to", default="",
+                   help="Local dataset root prefix to substitute for --path-prefix-from. "
+                        "Empty = no remapping. Must be set together with --path-prefix-from.")
     p.add_argument("--limit", type=int, default=0, help="Debug: only first N entries (0=all).")
     p.add_argument("--threshold", type=float, default=0.5, help="Threshold for pred_class (default 0.5, matches IMDLBenCo ImageAccuracy).")
     return p.parse_args()
@@ -76,6 +82,9 @@ def parse_args():
 
 def main():
     args = parse_args()
+    if bool(args.path_prefix_from) != bool(args.path_prefix_to):
+        sys.exit("[dump] ERROR: --path-prefix-from and --path-prefix-to must be set "
+                 "together (both set, or both empty).")
     device = torch.device(f"cuda:{args.gpu}" if torch.cuda.is_available() else "cpu")
     if torch.cuda.is_available():
         torch.cuda.set_device(device)

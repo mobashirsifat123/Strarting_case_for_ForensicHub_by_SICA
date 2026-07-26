@@ -25,6 +25,13 @@ os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 import torch  # noqa: E402
 
+# Default repo = the directory that contains ForensicHub/ as a subdirectory.
+# Resolved relative to this script so the check works regardless of the current
+# working directory: <repo>/scripts/verify_checkpoint.py -> <repo>/.. (ForensicHub
+# is a sibling of this repo under SICA_OpenMMSec). Override with --repo or set
+# the FORENSICHUB env var to point directly at a ForensicHub checkout.
+DEFAULT_REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 
 def sha256_of(path, chunk=1 << 20):
     h = hashlib.sha256()
@@ -56,14 +63,19 @@ def main():
     ap.add_argument("--checkpoint", required=True)
     ap.add_argument("--out-json", required=True)
     ap.add_argument("--out-md", required=True)
-ap.add_argument(
-    "--repo",
-    default=".",
-    help="Path to the SICA/ForensicHub repository"
-)
+    ap.add_argument(
+        "--repo",
+        default=DEFAULT_REPO,
+        help="Directory containing ForensicHub/ as a subdirectory "
+             "(default: this repo's parent). Override with --repo, or set the "
+             "FORENSICHUB env var to point directly at a ForensicHub checkout."
+    )
     args = ap.parse_args()
 
     ckpt_path = os.path.abspath(args.checkpoint)
+    if not os.path.isfile(ckpt_path):
+        print(f"[verify] FATAL: checkpoint not found: {ckpt_path}", flush=True)
+        sys.exit(2)
     rec = {"absolute_path": ckpt_path}
 
     print(f"[verify] computing SHA-256 of {ckpt_path} ...", flush=True)
@@ -133,7 +145,7 @@ ap.add_argument(
     param_counts = {"method": "model_build_failed", "total": None,
                     "trainable": None, "frozen": None, "detail": None}
     try:
-        sys.path.insert(0, os.path.join(args.repo, "ForensicHub"))
+        sys.path.insert(0, os.environ.get("FORENSICHUB") or os.path.join(args.repo, "ForensicHub"))
         from ForensicHub.registry import MODELS, build_from_registry  # noqa: E402
         model_args = {"name": "CLIP_LORA_PURE", "init_config": {
             "name": "ViT-L/14", "num_classes": 1, "lora_r": 8, "lora_alpha": 16.0,
